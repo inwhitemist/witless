@@ -201,6 +201,13 @@ def is_allowed_text(text: str, settings: ChatSettings) -> bool:
     return True
 
 
+def maybe_caps(text: str) -> str:
+    """Return text uppercased with 10% chance, otherwise unchanged."""
+    if random.random() < 0.1:
+        return text.upper()
+    return text
+
+
 async def is_admin(bot: Bot, chat_id: int, user_id: int) -> bool:
     member = await bot.get_chat_member(chat_id, user_id)
     return member.status in ("administrator", "creator")
@@ -351,7 +358,7 @@ async def cmd_gen(message: Message):
         return
 
     out = generate(samples, tries_count=300, size=size)
-    await message.answer((out or "че").lower())
+    await message.answer(maybe_caps((out or "че").lower()))
 
 
 # ================== CALLBACK-МЕНЮ ==================
@@ -429,7 +436,7 @@ async def cb_gen(call: CallbackQuery):
         return
 
     out = generate(samples, tries_count=300, size=size) or "че"
-    await call.message.answer(out.lower())
+    await call.message.answer(maybe_caps(out.lower()))
     await call.answer("Готово")
 
 
@@ -544,7 +551,7 @@ async def on_message(message: Message):
     if len(samples) >= s.min_samples and random.randint(1, s.auto_reply_chance_n) == 1:
         out = generate(samples, tries_count=200, size=s.default_gen_size)
         if out:
-            await message.answer(out.lower())
+            await message.answer(maybe_caps(out.lower()))
 
 
 # ================== ЗАПУСК ==================
