@@ -551,6 +551,7 @@ async def on_message(message: Message):
 async def main():
     ensure_dirs()
     bot = Bot(token=TELEGRAM_TOKEN)
+    await bot.delete_webhook(drop_pending_updates=True)
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
     dp.include_router(router)
