@@ -318,9 +318,20 @@ async def cmd_settings(message: Message):
 
 @router.message(Command("info"))
 async def cmd_info(message: Message):
+    """Show number of saved phrases and dialog file size."""
     addtobd(message.chat.id)
     samples = load_samples(message.chat.id)
-    await message.answer(f"сохранил фраз: {len(samples)}")
+
+    path = dialog_path(message.chat.id)
+    try:
+        size = os.path.getsize(path)
+    except Exception:
+        size = 0
+
+    await message.answer(
+        f"сохранил фраз: {len(samples)}\n"
+        f"размер файла: {size} байт"
+    )
 
 
 @router.message(Command("clear"))
