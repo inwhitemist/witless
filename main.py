@@ -308,12 +308,10 @@ async def cmd_help(message: Message):
         "Можно управлять через кнопки в /settings."
     )
 
-@router.message(Message("как"))
+@router.message(F.text == "как")
 async def cmd_help(message: Message):
     addtobd(message.chat.id)
-    await message.answer(
-        "а как он так бистро пригае? он же с autobanihop пригае?"
-    )
+    await message.answer("а как он так бистро пригае? он же с autobanihop пригае?")
 
 @router.message(Command("settings"))
 async def cmd_settings(message: Message):
