@@ -342,12 +342,13 @@ async def cmd_clear(message: Message):
         await message.answer("Не могу определить пользователя.")
         return
 
+    # только админы могут запрашивать очистку
     if not await is_admin(message.bot, message.chat.id, message.from_user.id):
         await message.answer("Вы не администратор беседы")
         return
 
-    clear_samples(message.chat.id)
-    await message.answer("База была успешно очищена.")
+    # попросим подтвердить действие, реальное удаление будет в cb_clear_yes
+    await message.answer("Точно очистить базу этого чата?", reply_markup=clear_confirm_kb())
 
 
 @router.message(Command("gen"))
