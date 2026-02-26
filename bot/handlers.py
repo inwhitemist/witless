@@ -7,7 +7,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, ChatMemberUpdated, Message
 
-from .config import HELP_MESSAGE, MEETING_MESSAGE
+from .config import HELP_MESSAGE, KAK_MESSAGE, MEETING_MESSAGE
 from .keyboards import clear_confirm_kb, gen_kb, settings_kb
 from .services import callback_chat_id, is_admin
 from .states import SettingsForm
@@ -51,7 +51,7 @@ def build_router(storage: ChatStorage) -> Router:
     @router.message(F.text == "как")
     async def msg_kak(message: Message):
         storage.ensure_chat(message.chat.id)
-        await message.answer("а как он так бистро пригае? он же с autobanihop пригае?")
+        await message.answer(KAK_MESSAGE)
 
     @router.message(Command("settings"))
     async def cmd_settings(message: Message):

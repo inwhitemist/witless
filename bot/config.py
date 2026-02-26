@@ -21,6 +21,8 @@ HELP_MESSAGE = (
     "Можно управлять через кнопки в /settings."
 )
 
+KAK_MESSAGE = "а как он так бистро пригае? он же с autobanihop пригае?"
+
 
 @dataclass(frozen=True)
 class AppConfig:
