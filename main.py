@@ -3,6 +3,7 @@ import json
 import random
 from random import choice
 from dataclasses import dataclass, asdict
+from typing import Optional
 
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.filters import Command
@@ -16,10 +17,6 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 
 # ================== НАСТРОЙКИ БОТА ==================
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
-if not TELEGRAM_TOKEN:
-    raise RuntimeError("TELEGRAM_TOKEN is not set")
-
 meeting = (
     "Здарова, че я здесь забыл?\n"
     "Ну раз пригласили, то не забудьте выдать мне админку, "
@@ -27,7 +24,7 @@ meeting = (
     "Список команд доступен по команде /help\n"
 )
 
-BASE_DIR = "Dialogs"
+BASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Dialogs")
 DIALOGS_DIR = os.path.join(BASE_DIR, "dialogs")
 SETTINGS_DIR = os.path.join(BASE_DIR, "settings")
 
@@ -36,7 +33,7 @@ SETTINGS_DIR = os.path.join(BASE_DIR, "settings")
 _START = "___start___"
 _END = "___end___"
 
-def generate(samples: list[str], tries_count: int = 200, size: int = 0) -> str | None:
+def generate(samples: list[str], tries_count: int = 200, size: int = 0) -> Optional[str]:
     if not samples:
         return None
 
@@ -64,13 +61,18 @@ def generate(samples: list[str], tries_count: int = 200, size: int = 0) -> str |
     if not start_frames:
         return None
 
+    max_tokens = 100
     for _ in range(tries_count):
         result = [choice(start_frames)]
-        for frame in result:
+        for _ in range(max_tokens):
+            frame = result[-1]
             nxt = choice(frame_map.get(frame, [_END]))
             if nxt == _END:
                 break
             result.append(nxt)
+        else:
+            # Если не дошли до _END за max_tokens, пробуем заново.
+            continue
 
         str_result = " ".join(result)
 
@@ -127,20 +129,26 @@ def addtobd(chat_id: int) -> None:
 
 
 def load_samples(chat_id: int) -> list[str]:
+    ensure_dirs()
     path = dialog_path(chat_id)
     if not os.path.exists(path):
         return []
-    with open(path, encoding="utf8") as f:
-        lines = [ln.strip() for ln in f.readlines()]
+    try:
+        with open(path, encoding="utf8") as f:
+            lines = [ln.strip() for ln in f.readlines()]
+    except Exception:
+        return []
     return [ln for ln in lines if ln]
 
 
 def append_sample(chat_id: int, text: str) -> None:
+    ensure_dirs()
     with open(dialog_path(chat_id), "a", encoding="utf8") as f:
         f.write(text.replace("\n", " ").strip() + "\n")
 
 
 def clear_samples(chat_id: int) -> None:
+    ensure_dirs()
     with open(dialog_path(chat_id), "w", encoding="utf8") as f:
         f.write("")
 
@@ -209,8 +217,17 @@ def maybe_caps(text: str) -> str:
 
 
 async def is_admin(bot: Bot, chat_id: int, user_id: int) -> bool:
-    member = await bot.get_chat_member(chat_id, user_id)
+    try:
+        member = await bot.get_chat_member(chat_id, user_id)
+    except Exception:
+        return False
     return member.status in ("administrator", "creator")
+
+
+def callback_chat_id(call: CallbackQuery) -> Optional[int]:
+    if call.message is None:
+        return None
+    return call.message.chat.id
 
 
 # ================== КНОПКИ/МЕНЮ ==================
@@ -309,7 +326,7 @@ async def cmd_help(message: Message):
     )
 
 @router.message(F.text == "как")
-async def cmd_help(message: Message):
+async def msg_kak(message: Message):
     addtobd(message.chat.id)
     await message.answer("а как он так бистро пригае? он же с autobanihop пригае?")
 
@@ -380,14 +397,21 @@ async def cmd_gen(message: Message):
 # ================== CALLBACK-МЕНЮ ==================
 @router.callback_query(F.data == "set:refresh")
 async def cb_refresh(call: CallbackQuery, state: FSMContext):
+    chat_id = callback_chat_id(call)
+    if chat_id is None or call.message is None:
+        await call.answer()
+        return
     await state.clear()
-    s = load_settings(call.message.chat.id)
+    s = load_settings(chat_id)
     await call.message.edit_text("⚙ Настройки чата:", reply_markup=settings_kb(s))
     await call.answer()
 
 
 @router.callback_query(F.data == "set:close")
 async def cb_close(call: CallbackQuery, state: FSMContext):
+    if call.message is None:
+        await call.answer()
+        return
     await state.clear()
     await call.message.edit_text("Настройки закрыты.")
     await call.answer()
@@ -395,7 +419,10 @@ async def cb_close(call: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "set:toggle_autoreply")
 async def cb_toggle(call: CallbackQuery):
-    chat_id = call.message.chat.id
+    chat_id = callback_chat_id(call)
+    if chat_id is None or call.message is None:
+        await call.answer()
+        return
     s = load_settings(chat_id)
     s.auto_reply_enabled = not s.auto_reply_enabled
     save_settings(chat_id, s)
@@ -405,6 +432,9 @@ async def cb_toggle(call: CallbackQuery):
 
 @router.callback_query(F.data == "set:chance")
 async def cb_set_chance(call: CallbackQuery, state: FSMContext):
+    if call.message is None:
+        await call.answer()
+        return
     await state.set_state(SettingsForm.waiting_chance)
     await call.answer()
     await call.message.answer("Введи число N для шанса автоответа: будет отвечать 1 раз из N.\nПример: 3 (это 1/3). Допустимо 1..20")
@@ -412,6 +442,9 @@ async def cb_set_chance(call: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "set:maxlen")
 async def cb_set_maxlen(call: CallbackQuery, state: FSMContext):
+    if call.message is None:
+        await call.answer()
+        return
     await state.set_state(SettingsForm.waiting_maxlen)
     await call.answer()
     await call.message.answer("Введи максимальную длину сохраняемого сообщения (символы). Допустимо 10..400")
@@ -419,6 +452,9 @@ async def cb_set_maxlen(call: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "set:minsamples")
 async def cb_set_minsamples(call: CallbackQuery, state: FSMContext):
+    if call.message is None:
+        await call.answer()
+        return
     await state.set_state(SettingsForm.waiting_minsamples)
     await call.answer()
     await call.message.answer("Введи минимум фраз для генерации. Допустимо 2..200")
@@ -426,19 +462,28 @@ async def cb_set_minsamples(call: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "set:defsize")
 async def cb_defsize(call: CallbackQuery):
+    if call.message is None:
+        await call.answer()
+        return
     await call.answer()
     await call.message.answer("Выбери размер генерации по умолчанию:", reply_markup=gen_kb())
 
 
 @router.callback_query(F.data == "gen:menu")
 async def cb_gen_menu(call: CallbackQuery):
+    if call.message is None:
+        await call.answer()
+        return
     await call.answer()
     await call.message.answer("Выбери размер для генерации:", reply_markup=gen_kb())
 
 
 @router.callback_query(F.data.startswith("gen:"))
 async def cb_gen(call: CallbackQuery):
-    chat_id = call.message.chat.id
+    chat_id = callback_chat_id(call)
+    if chat_id is None or call.message is None:
+        await call.answer()
+        return
     s = load_settings(chat_id)
 
     try:
@@ -458,13 +503,19 @@ async def cb_gen(call: CallbackQuery):
 
 @router.callback_query(F.data == "clear:confirm")
 async def cb_clear_confirm(call: CallbackQuery):
+    if call.message is None:
+        await call.answer()
+        return
     await call.answer()
     await call.message.answer("Точно очистить базу этого чата?", reply_markup=clear_confirm_kb())
 
 
 @router.callback_query(F.data == "clear:yes")
 async def cb_clear_yes(call: CallbackQuery):
-    chat_id = call.message.chat.id
+    chat_id = callback_chat_id(call)
+    if chat_id is None or call.message is None:
+        await call.answer()
+        return
 
     if call.from_user is None:
         await call.answer("Не могу определить пользователя", show_alert=True)
@@ -558,22 +609,31 @@ async def on_message(message: Message):
         return
 
     append_sample(message.chat.id, message.text)
-    samples = load_samples(message.chat.id)
 
     if not s.auto_reply_enabled:
         return
 
     # шанс 1 из N
-    if len(samples) >= s.min_samples and random.randint(1, s.auto_reply_chance_n) == 1:
-        out = generate(samples, tries_count=200, size=s.default_gen_size)
-        if out:
-            await message.answer(maybe_caps(out.lower()))
+    if random.randint(1, s.auto_reply_chance_n) != 1:
+        return
+
+    samples = load_samples(message.chat.id)
+    if len(samples) < s.min_samples:
+        return
+
+    out = generate(samples, tries_count=200, size=s.default_gen_size)
+    if out:
+        await message.answer(maybe_caps(out.lower()))
 
 
 # ================== ЗАПУСК ==================
 async def main():
     ensure_dirs()
-    bot = Bot(token=TELEGRAM_TOKEN)
+    token = os.getenv("TELEGRAM_TOKEN", "")
+    if not token:
+        raise RuntimeError("TELEGRAM_TOKEN is not set")
+
+    bot = Bot(token=token)
     await bot.delete_webhook(drop_pending_updates=True)
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
