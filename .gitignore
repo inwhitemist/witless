@@ -1,3 +1,4 @@
 .env
 /Dialogs
 /__pycache__
+/bot/__pycache__
